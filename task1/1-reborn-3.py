@@ -265,6 +265,8 @@ def run_layer_and_float_dialog(title="Выберите слой и введит�
 
 # ввод слоя дорог и значения максимальной дистанции
 CONFIG['STOPS_LAYER'], R = run_layer_and_float_dialog(default_value=500)
+R = int(R)
+start_R = R
 
 # инициализируем выходной слой
 result_layer = QgsVectorLayer("Polygon?crs=EPSG:3857", "reachable_stops_areas", "memory")
@@ -349,8 +351,8 @@ for feat in layer.getFeatures():
 def main_worker(point_x, point_y):
     point_x = round(point_x, 2)
     point_y = round(point_y, 2)
-    global result_layer, prov
-    R = 500
+    global result_layer, prov, start_R
+    R = start_R
     center_point = QgsPointXY(point_x, point_y)
 
     # слой высотных полигонов
