@@ -1,4 +1,4 @@
-from qgis.core import (
+from qgis.core import (  # Импорт основных классов QGIS для работы с проектами, слоями, геометриями
     QgsProject,
     QgsVectorLayer,
     QgsFeature,
@@ -11,99 +11,98 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform
 )
-from qgis.analysis import (
+from qgis.analysis import (  # Импорт модулей анализа для построения сетевых графов
     QgsVectorLayerDirector,
     QgsNetworkDistanceStrategy,
     QgsGraphAnalyzer,
     QgsGraphBuilder,
 )
-from qgis.gui import QgsMapToolEmitPoint, QgsVertexMarker
-import math
-from PyQt5.QtGui import QColor
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QInputDialog
-import time
+from qgis.gui import QgsMapToolEmitPoint, QgsVertexMarker  # Импорт GUI-компонентов для интерактивной работы
+import math  # Математические функции для геометрических операций
+from PyQt5.QtGui import QColor  # Работа с цветами для визуализации
+from PyQt5.QtCore import Qt  # Константы Qt для настроек отображения
+from PyQt5.QtWidgets import QInputDialog  # Диалоговые окна для ввода данных
 
-CONFIG = {
+CONFIG = {  # Конфигурация имен слоев проекта
     "BUILDINGS_POPULATION": "Здания_насел_attract",
     "HARDWARE": "Highway_OSM_Irkutsk",
     "EDGE_UDS": "УДС_link",
 }
 
-VEL_LIMITS_CFG = [
+VEL_LIMITS_CFG = [  # Конфигурация порогов доступности для велосипеда
     {
         "dist": 2490.0,
         "buf": 50.0,
-        "name": "Access_Green_200m",
+        "name": "Access_Green_10min",
         "color": QColor(0, 255, 0, 150),
     },
     {
         "dist": 4980.0,
         "buf": 75.0,
-        "name": "Access_Yellow_350m",
+        "name": "Access_Yellow_20min",
         "color": QColor(255, 255, 0, 150),
     },
     {
         "dist": 7470,
         "buf": 100.0,
-        "name": "Access_Red_500m",
+        "name": "Access_Red_30min",
         "color": QColor(255, 0, 0, 150),
     },
 ]
 
-LIMITS_CFG = [
+LIMITS_CFG = [  # Конфигурация порогов доступности для пешехода
     {
         "dist": 840.0,
         "buf": 50.0,
-        "name": "Access_Green_200m",
+        "name": "Access_Green_10min",
         "color": QColor(0, 255, 0, 150),
     },
     {
         "dist": 1680.0,
         "buf": 75.0,
-        "name": "Access_Yellow_350m",
+        "name": "Access_Yellow_20min",
         "color": QColor(255, 255, 0, 150),
     },
     {
         "dist": 2520.0,
         "buf": 100.0,
-        "name": "Access_Red_500m",
+        "name": "Access_Red_30min",
         "color": QColor(255, 0, 0, 150),
     },
 ]
-CAR_LIMITS_CFG = [
+CAR_LIMITS_CFG = [  # Конфигурация порогов доступности для автомобиля/такси
     {
         "dist": 600,
         "buf": 50.0,
-        "name": "Access_Green_200m",
+        "name": "Access_Green_10min",
         "color": QColor(0, 255, 0, 150),
     },
     {
         "dist": 1200,
         "buf": 75.0,
-        "name": "Access_Yellow_350m",
+        "name": "Access_Yellow_20min",
         "color": QColor(255, 255, 0, 150),
     },
     {
         "dist": 1800,
         "buf": 100.0,
-        "name": "Access_Red_500m",
+        "name": "Access_Red_30min",
         "color": QColor(255, 0, 0, 150),
     },
 ]
-MAX_GAP_JUMP = 25.0
+MAX_GAP_JUMP = 25.0  # Максимальный разрыв для соединения узлов пешеходной сети
 
 
 class TimeBasedStrategy(QgsNetworkStrategy):
     def __init__(self, speed_attribute, default_speed=50.0):
         super().__init__()
-        self.speed_attribute = speed_attribute
-        self.default_speed = default_speed
+        self.speed_attribute = speed_attribute  # Атрибут скорости из данных
+        self.default_speed = default_speed  # Скорость по умолчанию
     def cost(self, distance, feature):
-        length = distance
+        length = distance  # Длина ребра графа
         if feature.isValid():
             if feature.fieldNameIndex("LENGTH") >= 0:
-                length_value = feature["LENGTH"]
+                length_value = feature["LENGTH"]  # Попытка взять длину из атрибутов
                 if length_value is not None:
                     try:
                         length_val = float(length_value)
@@ -112,32 +111,32 @@ class TimeBasedStrategy(QgsNetworkStrategy):
                     except:
                         pass
 
-        speed_km_h = self.default_speed
+        speed_km_h = self.default_speed  # Инициализация скорости
 
         if self.speed_attribute and feature.isValid():
             if feature.fieldNameIndex(self.speed_attribute) >= 0:
-                value = feature[self.speed_attribute]
+                value = feature[self.speed_attribute]  # Получение значения скорости
                 if value is not None:
-                    parsed_speed = parse_speed(value)
+                    parsed_speed = parse_speed(value)  # Парсинг строки скорости
                     if parsed_speed > 0:
                         speed_km_h = parsed_speed
         if speed_km_h <= 0:
-            return float('inf')
+            return float('inf')  # Нулевая скорость делает ребро недоступным
 
-        speed_m_s = speed_km_h * 1000 / 3600
+        speed_m_s = speed_km_h * 1000 / 3600  # Конвертация км/ч в м/с
 
-        return length / speed_m_s
+        return length / speed_m_s  # Время прохождения ребра
 
 
 def cross(o, a, b):
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])  # Векторное произведение для QuickHull
 
 def parse_speed(value):
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
-    s = str(value).lower().replace("km/h", "").replace(",", ".").strip()
+    s = str(value).lower().replace("km/h", "").replace(",", ".").strip()  # Очистка строки скорости
     try:
         return float(s)
     except:
@@ -145,14 +144,14 @@ def parse_speed(value):
 
 def create_polygon_from_points(points):
     if len(points) < 3:
-        return QgsGeometry()
+        return QgsGeometry()  # Недостаточно точек для полигона
 
     polygon_points = points.copy()
-    polygon_points.append(points[0])
+    polygon_points.append(points[0])  # Замыкание полигона
     polygon_geom = QgsGeometry.fromPolygonXY([polygon_points])
 
     if not polygon_geom.isGeosValid():
-        polygon_geom = polygon_geom.makeValid()
+        polygon_geom = polygon_geom.makeValid()  # Исправление геометрии
 
     return polygon_geom
 
@@ -172,8 +171,8 @@ def quickhull_2d(points):
             continue
     if len(formatted_points) <= 3:
         return formatted_points
-    left = min(formatted_points, key=lambda p: p[0])
-    right = max(formatted_points, key=lambda p: p[0])
+    left = min(formatted_points, key=lambda p: p[0])  # Самая левая точка
+    right = max(formatted_points, key=lambda p: p[0])  # Самая правая точка
 
     hull = set()
     hull.add(tuple(left))
@@ -186,9 +185,9 @@ def quickhull_2d(points):
             continue
         cross_val = cross(left, right, p)
         if cross_val > 0:
-            left_points.append(p)
+            left_points.append(p)  # Точки слева от линии
         else:
-            right_points.append(p)
+            right_points.append(p)  # Точки справа от линии
 
     def find_hull(points_list, p1, p2, side_points):
         if not side_points:
@@ -197,10 +196,10 @@ def quickhull_2d(points):
         farthest = None
 
         for p in side_points:
-            dist = abs(cross(p1, p2, p))
+            dist = abs(cross(p1, p2, p))  # Расстояние до линии
             if dist > max_dist:
                 max_dist = dist
-                farthest = p
+                farthest = p  # Наиболее удаленная точка
 
         hull.add(tuple(farthest))
 
@@ -215,8 +214,8 @@ def quickhull_2d(points):
             elif cross(farthest, p2, p) > 0:
                 new_points2.append(p)
 
-        find_hull(points_list, p1, farthest, new_points1)
-        find_hull(points_list, farthest, p2, new_points2)
+        find_hull(points_list, p1, farthest, new_points1)  # Рекурсивный вызов для левой части
+        find_hull(points_list, farthest, p2, new_points2)  # Рекурсивный вызов для правой части
 
     find_hull(formatted_points, left, right, left_points)
     find_hull(formatted_points, right, left, right_points)
@@ -227,25 +226,24 @@ def quickhull_2d(points):
         center_y = sum(p[1] for p in hull_list) / len(hull_list)
 
         def angle_from_center(point):
-            return math.atan2(point[1] - center_y, point[0] - center_x)
+            return math.atan2(point[1] - center_y, point[0] - center_x)  # Угол для сортировки
 
-        hull_list.sort(key=angle_from_center, reverse=True)
+        hull_list.sort(key=angle_from_center, reverse=True)  # Сортировка по углу
 
     return hull_list
 
 
 def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
-    start_time = time.time()
     project = QgsProject.instance()
 
     buildings_layer_list = project.mapLayersByName(CONFIG["BUILDINGS_POPULATION"])
-    flag = False
+    flag = False  # Флаг типа сети (пешеход/велосипед vs авто)
 
     if selected_mode == "foot" or selected_mode == "bicycle":
-        walk_layers = project.mapLayersByName(CONFIG["HARDWARE"])
+        walk_layers = project.mapLayersByName(CONFIG["HARDWARE"])  # Слой пешеходных дорог
         flag = True
     elif selected_mode == "car" or selected_mode == "taxi":
-        walk_layers = project.mapLayersByName(CONFIG["EDGE_UDS"])
+        walk_layers = project.mapLayersByName(CONFIG["EDGE_UDS"])  # Слой автодорог
     else:
         walk_layers = project.mapLayersByName(CONFIG["HARDWARE"])
         flag = True
@@ -267,7 +265,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
             new_feature = QgsFeature(feature)
             geom = feature.geometry()
             try:
-                geom.transform(transform_buildings)
+                geom.transform(transform_buildings)  # Трансформация в CRS сети
                 new_feature.setGeometry(geom)
                 transformed_features.append(new_feature)
             except Exception as e:
@@ -285,7 +283,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
                 layer_type = "LineString"
 
         buildings_layer = QgsVectorLayer(f"{layer_type}?crs={crs.authid()}",
-                                         "Buildings_Transformed", "memory")
+                                         "Buildings_Transformed", "memory")  # Временный слой зданий
         buildings_layer.dataProvider().addFeatures(transformed_features)
 
     if buildings_layer.featureCount() == 0:
@@ -295,7 +293,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
     if crs.authid() != project_crs.authid():
         transform_point = QgsCoordinateTransform(project_crs, crs, project)
         try:
-            start_point_transformed = transform_point.transform(start_point)
+            start_point_transformed = transform_point.transform(start_point)  # Трансформация стартовой точки
             start_point = start_point_transformed
         except Exception as e:
             print(f"Transformation error: {e}")
@@ -303,20 +301,20 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
     if not walk_layer.extent().contains(start_point):
         distance_to_extent = walk_layer.extent().distance(start_point)
     director = QgsVectorLayerDirector(
-        walk_layer, -1, "", "", "", QgsVectorLayerDirector.DirectionBoth
+        walk_layer, -1, "", "", "", QgsVectorLayerDirector.DirectionBoth  # Настройка директора сети
     )
 
     if flag:
-        strategy = QgsNetworkDistanceStrategy()
+        strategy = QgsNetworkDistanceStrategy()  # Стратегия по расстоянию
     else:
         default_speed_val = start_speed if start_speed > 0 else 50.0
-        strategy = TimeBasedStrategy("V0PRT", default_speed=default_speed_val)
+        strategy = TimeBasedStrategy("V0PRT", default_speed=default_speed_val)  # Стратегия по времени
 
     director.addStrategy(strategy)
     builder = QgsGraphBuilder(crs)
 
     try:
-        director.makeGraph(builder, [])
+        director.makeGraph(builder, [])  # Построение графа
         graph = builder.graph()
         vertex_count = graph.vertexCount()
     except Exception as e:
@@ -332,7 +330,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         f.setGeometry(QgsGeometry.fromPointXY(pt))
         feature_list.append(f)
 
-    graph_index = QgsSpatialIndex()
+    graph_index = QgsSpatialIndex()  # Пространственный индекс вершин
     for f in feature_list:
         graph_index.addFeature(f)
 
@@ -342,19 +340,19 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         if len(v.outgoingEdges()) > 1:
             continue
         v_pt = all_graph_points[i]
-        nearest_ids = graph_index.nearestNeighbor(v_pt, 5)
+        nearest_ids = graph_index.nearestNeighbor(v_pt, 5)  # Поиск ближайших вершин
         for n_id in nearest_ids:
             if n_id == i:
                 continue
             dist = v_pt.distance(all_graph_points[n_id])
             if flag:
-                if dist <= MAX_GAP_JUMP:
+                if dist <= MAX_GAP_JUMP:  # Соединение разрывов в пешеходной сети
                     graph.addEdge(i, n_id, [dist])
                     graph.addEdge(n_id, i, [dist])
                     edges_added += 1
                     break
             else:
-                if dist <= 2:
+                if dist <= 2:  # Соединение разрывов в автомобильной сети
                     graph.addEdge(i, n_id, [dist])
                     graph.addEdge(n_id, i, [dist])
                     edges_added += 1
@@ -369,13 +367,13 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
             if geometry.type() == QgsWkbTypes.PointGeometry:
                 building_point = geometry.asPoint()
             else:
-                building_point = geometry.centroid().asPoint()
+                building_point = geometry.centroid().asPoint()  # Центроид здания
             nearest_ids = graph_index.nearestNeighbor(building_point, 1)
             if nearest_ids:
-                entry_node_indices.add(nearest_ids[0])
+                entry_node_indices.add(nearest_ids[0])  # Точки входа от зданий
     nearest_ids = graph_index.nearestNeighbor(start_point, 1)
     if not nearest_ids:
-        nearest_ids = graph_index.nearestNeighbor(start_point, 5, 1000)
+        nearest_ids = graph_index.nearestNeighbor(start_point, 5, 1000)  # Расширенный поиск стартовой вершины
         if not nearest_ids:
             start_point = walk_layer.extent().center()
             nearest_ids = graph_index.nearestNeighbor(start_point, 1)
@@ -386,7 +384,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         return
 
     try:
-        (tree, costs) = QgsGraphAnalyzer.dijkstra(graph, start_vertex_id, 0)
+        (tree, costs) = QgsGraphAnalyzer.dijkstra(graph, start_vertex_id, 0)  # Алгоритм Дейкстры
         reachable_count = sum(1 for cost in costs if cost != float('inf'))
         if reachable_count > 0:
             valid_costs = [c for c in costs if c != float('inf')]
@@ -402,15 +400,15 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         for building_vertex_id in entry_node_indices:
             distance_to_building = costs[building_vertex_id]
             if distance_to_building != float('inf'):
-                building_distances.append((building_vertex_id, distance_to_building))
+                building_distances.append((building_vertex_id, distance_to_building))  # Расстояния до зданий
     sorted_limits = None
     if flag:
         if selected_mode == "foot":
-            sorted_limits = sorted(LIMITS_CFG, key=lambda x: x["dist"])
+            sorted_limits = sorted(LIMITS_CFG, key=lambda x: x["dist"])  # Пороги для пешехода
         else:
-            sorted_limits = sorted(VEL_LIMITS_CFG, key=lambda x: x["dist"])
+            sorted_limits = sorted(VEL_LIMITS_CFG, key=lambda x: x["dist"])  # Пороги для велосипеда
     else:
-        sorted_limits = sorted(CAR_LIMITS_CFG, key=lambda x: x["dist"])
+        sorted_limits = sorted(CAR_LIMITS_CFG, key=lambda x: x["dist"])  # Пороги для автомобиля
     buckets = [[] for _ in range(len(sorted_limits))]
     max_dist = sorted_limits[-1]["dist"]
     segments_collected = 0
@@ -422,14 +420,14 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         if edge_id == -1:
             continue
         edge = graph.edge(edge_id)
-        segment = [all_graph_points[edge.fromVertex()], all_graph_points[edge.toVertex()]]
+        segment = [all_graph_points[edge.fromVertex()], all_graph_points[edge.toVertex()]]  # Сегмент ребра
         for b_idx, lim in enumerate(sorted_limits):
             if cost <= lim["dist"]:
-                buckets[b_idx].append(segment)
+                buckets[b_idx].append(segment)  # Распределение сегментов по корзинам
                 segments_collected += 1
                 break
     layers_created = 0
-    for i in range(len(sorted_limits) - 1, -1, -1):
+    for i in range(len(sorted_limits) - 1, -1, -1):  # Обработка от дальних к ближним зонам
         cfg = sorted_limits[i]
         segments = buckets[i]
         if not segments:
@@ -437,17 +435,17 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
 
         try:
             multi_line = QgsGeometry.fromMultiPolylineXY(segments)
-            buffered = multi_line.buffer(cfg["buf"], 4)
+            buffered = multi_line.buffer(cfg["buf"], 4)  # Буферизация линий
 
             if buffered and not buffered.isNull():
                 if buffered.isGeosValid():
-                    polygon_geom = buffered.convexHull()
+                    polygon_geom = buffered.convexHull()  # Выпуклая оболочка
 
                     if polygon_geom and not polygon_geom.isNull() and polygon_geom.isGeosValid():
                         layer_name = f"{cfg['name']}_{selected_mode}"
                         if not flag and start_speed > 0:
                             layer_name += f"_{int(start_speed)}kmh"
-                        layer = QgsVectorLayer(f"Polygon?crs={crs.authid()}", layer_name, "memory")
+                        layer = QgsVectorLayer(f"Polygon?crs={crs.authid()}", layer_name, "memory")  # Слой доступности
                         feat = QgsFeature()
                         feat.setGeometry(polygon_geom)
                         layer.dataProvider().addFeatures([feat])
@@ -455,7 +453,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
                         symbol.setColor(cfg["color"])
                         symbol.setOpacity(0.6)
                         if symbol.symbolLayer(0):
-                            symbol.symbolLayer(0).setStrokeStyle(Qt.NoPen)
+                            symbol.symbolLayer(0).setStrokeStyle(Qt.NoPen)  # Без контура
                         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
                         project.addMapLayer(layer)
                         layers_created += 1
@@ -464,7 +462,7 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
             import traceback
             traceback.print_exc()
     try:
-        analysis_layer = QgsVectorLayer(f"Point?crs={crs.authid()}", f"Start_Point_{selected_mode}", "memory")
+        analysis_layer = QgsVectorLayer(f"Point?crs={crs.authid()}", f"Start_Point_{selected_mode}", "memory")  # Слой стартовой точки
         analysis_feat = QgsFeature()
         analysis_feat.setGeometry(QgsGeometry.fromPointXY(start_vertex_point))
         analysis_layer.dataProvider().addFeatures([analysis_feat])
@@ -475,14 +473,12 @@ def run_accessibility_analysis_max_opt(start_point, selected_mode, start_speed):
         project.addMapLayer(analysis_layer)
     except Exception as e:
         print(f"ошибка при создании стартовой точки: {e}")
-    elapsed_time = time.time() - start_time
-    print(f"Время выполнения: {elapsed_time:.2f} секунд")
 class AccessibilityMapTool(QgsMapToolEmitPoint):
     def __init__(self, canvas):
         super().__init__(canvas)
         self.canvas = canvas
         self.start_point = None
-        self.selected_mode = None
+        self.selected_mode = None  # Выбранный режим передвижения
         self.markers = []
         self.speed = None
 
@@ -494,7 +490,7 @@ class AccessibilityMapTool(QgsMapToolEmitPoint):
         if self.markers:
             for marker in self.markers:
                 try:
-                    self.canvas.scene().removeItem(marker)
+                    self.canvas.scene().removeItem(marker)  # Удаление маркеров с канваса
                 except:
                     pass
             self.markers = []
@@ -508,7 +504,7 @@ class AccessibilityMapTool(QgsMapToolEmitPoint):
         point_canvas = self.toMapCoordinates(event.pos())
         if self.start_point is None:
             self.reset()
-            self.start_point = point_canvas
+            self.start_point = point_canvas  # Установка стартовой точки
             self.add_marker(point_canvas, QColor(0, 200, 0))
             print(f"Стартовая точка: {self.start_point.x():.2f}, {self.start_point.y():.2f}")
 
@@ -526,7 +522,7 @@ class AccessibilityMapTool(QgsMapToolEmitPoint):
                 }
                 self.selected_mode = mode_map.get(item, "foot")
                 if self.selected_mode == "foot" or self.selected_mode == "bicycle":
-                    run_accessibility_analysis_max_opt(self.start_point, self.selected_mode, 0)
+                    run_accessibility_analysis_max_opt(self.start_point, self.selected_mode, 0)  # Запуск для немоторизованных
                     self.reset()
                 else:
                     print("можете ввести скорость")
@@ -537,13 +533,13 @@ class AccessibilityMapTool(QgsMapToolEmitPoint):
                     f"скорость ({self.selected_mode})",
                     f"введите скорость движения (км/ч):",
                     50,
-                    1,
+                    0,
                     200,
                     1
                 )
                 if ok:
                     try:
-                        run_accessibility_analysis_max_opt(self.start_point, self.selected_mode, number)
+                        run_accessibility_analysis_max_opt(self.start_point, self.selected_mode, number)  # Запуск с заданной скоростью
                     except Exception as e:
                         print(f"ошибка при анализе доступности: {e}")
                         import traceback
@@ -556,14 +552,14 @@ class AccessibilityMapTool(QgsMapToolEmitPoint):
         marker = QgsVertexMarker(self.canvas)
         marker.setCenter(point)
         marker.setColor(color)
-        marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        marker.setIconType(QgsVertexMarker.ICON_CROSS)  # Крестообразный маркер
         marker.setIconSize(10)
         marker.setPenWidth(3)
         self.markers.append(marker)
 try:
     if iface:
         tool = AccessibilityMapTool(iface.mapCanvas())
-        iface.mapCanvas().setMapTool(tool)
+        iface.mapCanvas().setMapTool(tool)  # Активация инструмента
 except Exception as e:
     print(f"ошибка при инициализации инструмента: {e}")
     import traceback
